@@ -1,0 +1,2417 @@
+---
+title: "European Physicians"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    theme: spacelab
+
+runtime: shiny
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+
+library(flexdashboard)
+library(shiny)
+
+source("Git_000_src_cd_librariesPCA.R")
+source("Git_010_src_cd_DoctorVisit.R")
+source("Git_011_src_cd_DoctorPCAs.R")
+source("Git_012_src_cd_Doctor_Summary.R")
+
+# Setting the ggplot overall theme! 
+theme_ref = theme_tufte() + 
+  theme(text = element_text(family = "serif", size = 14),
+        title = element_text(color = "#990000"))
+theme_set(theme_ref)
+
+```
+
+
+Europe's Physicians
+===============================================================================
+
+
+```{r Europe_physicians, include=FALSE}
+
+# EU Physicians Table 
+  react_physicians_DT <- reactive({
+
+    data1 <- spec_doct17rc_g 
+
+      data1 <- data1 %>% 
+        st_drop_geometry() %>% 
+        mutate(Country = as.factor(Country)) %>% 
+        filter(Country == input$country_physicians)
+    
+    data1
+  })
+
+# EU Physicians Mpas 
+  react_physicians_map <- reactive({
+    # Filter the data
+    data2 <- spec_doct17rc_g %>% 
+      st_drop_geometry() %>% 
+        filter(Title == input$title_physicians)
+    
+    data2
+  })
+
+```
+
+
+Column {data-width=300 .sidebar}
+-----------------------------------------------------------------------
+
+```{r physicians_DT}
+
+selectInput("country_physicians", 
+            "Select a country:",
+            choices = c(# "All Countries",
+                        levels(df_spec_doct17rc_g$Country)))
+# br()
+
+selectInput("title_physicians", 
+            "Select a physician:",
+            choices = c("Specialist medical practitioners",
+                        "Generalist medical practitioners",
+                        "Psychiatrists",
+                        "General practitioners")) 
+
+DT::renderDataTable({
+
+datatable(  react_physicians_DT() %>% 
+              # st_drop_geometry() %>% 
+            select(Country, Title, Proportion = values) %>% 
+            arrange(-Proportion),
+          rownames=FALSE,
+          extensions = c("FixedColumns"),
+          options = list(scrollX = TRUE, 
+                         fixedColumns = list(leftColumns = 1),
+                         pageLength=5,
+                         columnDefs = list(list(className = 'dt-center', targets = "_all")),
+                         language = list(sSearch = "Filter:")))  %>% 
+  formatRound("Proportion", 
+              mark = ".", 
+              digits = 1)
+  
+  })
+
+```
+
+
+
+Column {data-width=400 .tabset}
+-----------------------------------------------------------------------
+
+### Physicians' Clusters
+
+
+```{r physicians_cluster}
+
+# European physicians by speciality (PCA1)
+
+renderPlot({
+
+fviz_cluster(res1.hcpc,
+             main = "Cluster Plot of European Physicians (1. Plane)",
+             axes = 1:2, 
+             repel = T, 
+             ggtheme = theme_bw() +
+  theme(text = element_text(family = "serif", size = 14),
+        title = element_text(color = "#990000"))) # #8b0000
+
+ })
+```
+
+
+### Physicians' Maps
+
+
+```{r Europe_physicians_maps, include=FALSE}
+
+
+### Plotting Map data
+
+react_physicians_leaf <- reactive({
+  
+  data_leaf = react_physicians_map()
+  
+  if (input$title_physicians == "Specialist medical practitioners"){
+
+qpal_spec <- colorQuantile("Greens",
+                        domain = spec_doct17rc_g %>% 
+                          st_drop_geometry() %>% 
+                          filter(Title == "Specialist medical practitioners") %>% select(values), 
+                        n = 5)
+
+leaf_spec = spec_doct17rc_g %>% 
+  filter(Title == "Specialist medical practitioners") %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$Esri.WorldGrayCanvas,
+                   options = providerTileOptions(opacity = 0.5)) %>% 
+  setView(lat = 55, lng = 20, zoom = 3) %>%
+  addPolygons(weight = 1,
+              fillOpacity = 1,
+              # color = ~color(),
+              fillColor = ~colorQuantile("Greens",  values)(values), 
+              label = ~paste0("Country: ", 
+                              Country , 
+                              " - ",
+                              "Specialists (per cap): ", 
+                              prettyNum(round(values,1), accuracy = 1)),
+              highlight = highlightOptions(weight = 2,
+                                           color = "darkgreen",
+                                           bringToFront = TRUE)) %>% 
+  addLegend(pal = qpal_spec,
+            title = "Quantiles (Specialists)",
+            values = ~values,
+            opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(100*x)))
+
+} else { if (input$title_physicians == "Generalist medical practitioners"){
+
+
+
+# Generalist medical practitioners
+qpal_medic <- colorQuantile("Reds",
+                           domain = spec_doct17rc_g %>% 
+                             st_drop_geometry() %>% 
+                             filter(Title == "Generalist medical practitioners") %>% select(values), 
+                           n = 5)
+
+leaf_medic = spec_doct17rc_g %>% 
+  filter(Title == "Generalist medical practitioners") %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$Esri.WorldGrayCanvas,
+                   options = providerTileOptions(opacity = 0.5)) %>% 
+  setView(lat = 55, lng = 20, zoom = 3) %>%
+  addPolygons(weight = 1,
+              fillOpacity = 1,
+              # color = ~color(),
+              fillColor = ~colorQuantile("Reds",  values)(values), 
+              label = ~paste0("Country: ", 
+                              Country , 
+                              " - ",
+                              "Medical Gen. (per cap): ", 
+                              prettyNum(round(values,1), accuracy = 1)),
+              highlight = highlightOptions(weight = 2,
+                                           color = "darkred",
+                                           bringToFront = TRUE)) %>% 
+  addLegend(pal = qpal_medic,
+            title = "Quantiles (Medical Gen.)",
+            values = ~values,
+            opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(100*x)))
+
+} else {  if (input$title_physicians == "Psychiatrists"){
+
+
+# Psychiatrists
+qpal_psych <- colorQuantile("Blues",
+                            domain = spec_doct17rc_g %>% 
+                              st_drop_geometry() %>% 
+                              filter(Title == "Psychiatrists") %>% 
+                              select(values),
+                            n = 5)
+
+leaf_psych = spec_doct17rc_g %>% 
+  filter(Title == "Psychiatrists") %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$Esri.WorldGrayCanvas,
+                   options = providerTileOptions(opacity = 0.5)) %>% 
+  setView(lat = 55, lng = 20, zoom = 3) %>%
+  addPolygons(weight = 1,
+              fillOpacity = 1,
+              # color = ~color(),
+              fillColor = ~colorQuantile("Blues",  values)(values), 
+              label = ~paste0("Country: ", 
+                              Country , 
+                              " - ",
+                              "Psychiatrists (per cap): ", 
+                              prettyNum(round(values,1), accuracy = 1)),
+              highlight = highlightOptions(weight = 2,
+                                           color = "darkblue",
+                                           bringToFront = TRUE)) %>% 
+  addLegend(pal = qpal_psych,
+            title = "Quantiles (Psychiatrists)",
+            values = ~values,
+            opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(100*x)))
+
+} else {
+
+
+### General practitioners
+qpal_gen <- colorQuantile("Purples",
+                            domain = spec_doct17rc_g %>% 
+                              st_drop_geometry() %>% 
+                              filter(Title == "General practitioners") %>% 
+                              select(values), 
+                          n = 5)
+
+leaf_gen = spec_doct17rc_g %>% 
+  filter(Title == "General practitioners") %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$Esri.WorldGrayCanvas,
+                   options = providerTileOptions(opacity = 0.5)) %>% 
+  setView(lat = 55, lng = 20, zoom = 3) %>%
+  addPolygons(weight = 1,
+              fillOpacity = 1,
+              # color = ~color(),
+              fillColor = ~colorQuantile("Purples",  values)(values), 
+              label = ~paste0("Country: ", 
+                              Country , 
+                              " - ",
+                              "General practitioners (per cap): ", 
+                              prettyNum(round(values,1), accuracy = 1)),
+              highlight = highlightOptions(weight = 2,
+                                           color = "darkblue",
+                                           bringToFront = TRUE)) %>% 
+  addLegend(pal = qpal_gen,
+            title = "Quantiles (General practitioners)",
+            values = ~values,
+            opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(100*x)))
+
+}}}
+
+})
+  
+```
+
+
+```{r physicians_leaflet}
+
+renderLeaflet({
+
+react_physicians_leaf()
+
+})
+
+```
+
+
+### Summary Data
+
+
+```{r physicians_summary_DT}
+
+### Summary EU Density Population Table
+DT::renderDataTable({
+
+datatable(Europe_Physicians_Sum %>% 
+            mutate(Title = fct_relevel(Title,
+                                       "Specialist medical practitioners",
+                                       "Generalist medical practitioners",
+                                       "Psychiatrists",
+                                       "General practitioners")),
+          rownames=FALSE,
+          extensions = c("FixedColumns"),
+          options = list(scrollX = TRUE, 
+                         fixedColumns = list(leftColumns = 1),
+                         pageLength=10,
+                         language = list(sSearch = "Filter:")))  %>% 
+  formatRound("Min", 
+              mark = ".", 
+              digits = 1) %>% 
+
+  formatRound("Median", 
+              mark = ".", 
+              digits = 1) %>% 
+
+  formatRound("Mean", 
+              mark = ".", 
+              digits = 1) %>% 
+ 
+  formatRound("Max", 
+              mark = ".", 
+              digits = 1) %>% 
+
+  formatRound("Std_Deviation", 
+              mark = ".", 
+              digits = 1) 
+
+})
+
+```
+
+
+
+Column {data-width=300 data-height=300}
+-----------------------------------------------------------------------
+
+### Top-10 Barcharts
+
+
+```{r}
+
+### Plotting bar Charts
+
+react_physicians_bar <- reactive({
+  
+  data_bar = react_physicians_map()
+  
+  if (input$title_physicians == "Specialist medical practitioners"){
+    
+    
+gg_physicians_bar = spec_doct17rc_g %>% 
+  st_drop_geometry() %>% 
+  mutate(Country = as.factor(Country)) %>% 
+  filter(Title %in% c("Specialist medical practitioners")) %>% 
+  select(Country, Title, values) %>%
+  arrange(Title, -values) %>%
+  top_n(10) %>% 
+  ggplot(aes(fct_reorder(Country, values), values)) + 
+  geom_col(fill = "#008837") +
+  scale_x_discrete("") +
+  scale_y_continuous("Per 100.000 Inhabitants") +
+  ggtitle("Specialist medical practitioners") +
+coord_flip() 
+
+} else { if (input$title_physicians == "Generalist medical practitioners"){
+
+gg_physicians_bar = spec_doct17rc_g %>% 
+  st_drop_geometry() %>% 
+  mutate(Country = as.factor(Country)) %>% 
+  filter(Title %in% c("Generalist medical practitioners")) %>% 
+  select(Country, Title, values) %>%
+  arrange(Title, -values) %>%
+  top_n(10) %>% 
+  ggplot(aes(fct_reorder(Country, values), values)) + 
+  geom_col(fill = "#ca0020") +
+  scale_x_discrete("") +
+  scale_y_continuous("Per 100.000 Inhabitants") +
+  ggtitle("Generalist medical practitioners") +
+  coord_flip() 
+
+
+} else {  if (input$title_physicians == "Psychiatrists"){
+
+gg_physicians_bar = spec_doct17rc_g %>% 
+  st_drop_geometry() %>% 
+  mutate(Country = as.factor(Country)) %>% 
+  filter(Title %in% c("Psychiatrists")) %>% 
+  select(Country, Title, values) %>%
+  arrange(Title, -values) %>%
+  top_n(10) %>% 
+  ggplot(aes(fct_reorder(Country, values), values)) + 
+  geom_col(fill = "#0571b0") +
+  scale_x_discrete("") +
+  scale_y_continuous("Per 100.000 Inhabitants") +
+  ggtitle("Psychiatrists") +
+  coord_flip() 
+
+
+} else {
+
+gg_physicians_bar = spec_doct17rc_g %>% 
+  st_drop_geometry() %>% 
+  mutate(Country = as.factor(Country)) %>% 
+  filter(Title %in% c("General practitioners")) %>% 
+  select(Country, Title, values) %>%
+  arrange(Title, -values) %>%
+  top_n(10) %>% 
+  ggplot(aes(fct_reorder(Country, values), values)) + 
+  geom_col(fill = "#7b3294") +
+  scale_x_discrete("") +
+  scale_y_continuous("Per 100.000 Inhabitants") +
+  ggtitle("General practitioners") +
+  coord_flip() 
+
+}}}
+  
+  gg_physicians_bar
+  
+})
+
+
+```
+
+
+
+```{r physicians_barchart}
+renderPlotly({
+
+      
+     ggplotly(react_physicians_bar(), tooltip = c("Country", "values")) 
+  
+  
+})     
+```
+
+### Physicians' Density Plot
+
+```{r physicians_density}
+
+#### Density Plots
+renderPlotly({
+
+gg_dens_physicians = ggplot(spec_doct17rc_g %>% 
+                   st_drop_geometry() %>% 
+                   filter(Title %in% c("Specialist medical practitioners",
+                                       "Generalist medical practitioners",
+                                       "Psychiatrists",
+                                       "General practitioners")), 
+                 aes(values,
+                     fill = Title)) +
+  geom_density(alpha = .5, color=NA) + 
+  scale_x_continuous("Practicians per 100.000 inhabitants") +
+  scale_fill_manual(values = c("#ca0020", # "Generalist medical
+                               "#7b3294", # "General practitioners
+                               "#0571b0", # Psychiatrists
+                               "#008837" # "Specialist medical"
+                               ))
+
+
+ggplotly(gg_dens_physicians) %>%
+  layout(showlegend = FALSE)
+  
+})
+
+```
+
+
+
+Changing Specialties
+===============================================================================
+
+
+```{r Europe_growths, include=FALSE}
+
+# EU Physicians Table 
+  react_growth_DT <- reactive({
+
+    data1 <- spec_doct_rc_gr_g 
+    
+    if (input$country_growth != "All Countries"){
+      data1 <- data1 %>% 
+        st_drop_geometry() %>% 
+        mutate(Country = as.factor(Country)) %>% 
+        filter(Country == input$country_growth)
+    }
+    
+    data1
+  })
+
+# EU Physicians Mpas 
+  react_growth_map <- reactive({
+
+    data2 <- spec_doct_rc_gr_g %>% 
+      st_drop_geometry() %>% 
+        filter(Title == input$title_growth)
+    
+    data2
+  })
+
+```
+
+
+Column {data-width=300 .sidebar}
+-----------------------------------------------------------------------
+
+```{r}
+
+selectInput("country_growth", 
+            "Select a country:",
+            choices = c("All Countries",
+                        levels(df_spec_doct_rc_gr_g$Country)))
+# br()
+
+selectInput("title_growth", 
+            "Select a physician:",
+            choices = c("Specialist medical practitioners",
+                        "Plastic surgery",
+                        "Gastroenterology", 
+                        "Immunology", 
+                        "Microbiology-bacteriology", 
+                        "Urology",
+                        "Haematology")) 
+
+DT::renderDataTable({
+
+datatable(  react_growth_DT() %>% 
+              # st_drop_geometry() %>% 
+            select(Country, Title, GrowthRate) %>% 
+            arrange(-GrowthRate),
+          rownames=FALSE,
+          extensions = c("FixedColumns"),
+          options = list(scrollX = TRUE, 
+                         fixedColumns = list(leftColumns = 1),
+                         pageLength=5,
+                         columnDefs = list(list(className = 'dt-center', targets = "_all")),
+                         language = list(sSearch = "Filter:")))  %>% 
+  formatRound("GrowthRate", 
+              mark = ".", 
+              digits = 1)
+  
+  })
+
+```
+
+
+
+Column {data-width=400 .tabset}
+-----------------------------------------------------------------------
+
+### Growth Rates' Clusters
+
+
+```{r growth_cluster}
+
+# Physicianss Growth Rates by speciality (PCA1)
+
+renderPlot({
+
+fviz_cluster(res2.hcpc,
+             main = "Cluster Plot of Growth Rates (1. Plane)",
+             axes = 1:2, 
+             repel = T, 
+             ggtheme = theme_bw() +
+  theme(text = element_text(family = "serif", size = 14),
+        title = element_text(color = "#990000"))) # #8b0000
+
+ })
+```
+
+
+### Growth Rates' Maps
+
+
+```{r Europe_growth_maps, include=FALSE}
+
+
+### Plotting Map data
+
+react_growth_leaf <- reactive({
+  
+  data_leaf = react_growth_map()
+  
+  
+  if (input$title_growth == "Specialist medical practitioners"){
+
+# Specialist medical practitioners
+qpal_gr_spec <- colorQuantile("Greens",
+                           domain = spec_doct_rc_gr_g %>% 
+                             st_drop_geometry() %>% 
+                             filter(Title == "Specialist medical practitioners") %>% 
+                             select(GrowthRate), 
+                           n = 5)
+
+leaf_gr_spec = spec_doct_rc_gr_g %>% 
+  filter(Title == "Specialist medical practitioners") %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$Esri.WorldGrayCanvas,
+                   options = providerTileOptions(opacity = 0.5)) %>% 
+  setView(lat = 55, lng = 20, zoom = 3) %>%
+  addPolygons(weight = 1,
+              fillOpacity = 1,
+              # color = ~color(),
+              fillColor = ~colorQuantile("Greens",  GrowthRate)(GrowthRate), 
+              label = ~paste0("Country: ", 
+                              Country , 
+                              " - ",
+                              "Specialists (per cap): ", 
+                              prettyNum(round(GrowthRate,1), accuracy = 1)),
+              highlight = highlightOptions(weight = 2,
+                                           color = "darkgreen",
+                                           bringToFront = TRUE)) %>% 
+  addLegend(pal = qpal_gr_spec,
+            title = "Quantiles (Specialists's growth)",
+            values = ~GrowthRate,
+            opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(100*x)))
+
+} else { if (input$title_growth == "Plastic surgery") {
+
+# Plastic surgery
+qpal_gr_plast <- colorQuantile("Reds",
+                            domain = spec_doct_rc_gr_g %>% 
+                              st_drop_geometry() %>% 
+                              filter(Title == "Plastic surgery") %>% 
+                              select(GrowthRate), 
+                            n = 5)
+
+leaf_gr_plast = spec_doct_rc_gr_g %>% 
+  filter(Title == "Plastic surgery") %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$Esri.WorldGrayCanvas,
+                   options = providerTileOptions(opacity = 0.5)) %>% 
+  setView(lat = 55, lng = 20, zoom = 3) %>%
+  addPolygons(weight = 1,
+              fillOpacity = 1,
+              # color = ~color(),
+              fillColor = ~colorQuantile("Reds",  GrowthRate)(GrowthRate), 
+              label = ~paste0("Country: ", 
+                              Country , 
+                              " - ",
+                              "Plast. Surgery (per cap): ", 
+                              prettyNum(round(GrowthRate,1), accuracy = 1)),
+              highlight = highlightOptions(weight = 2,
+                                           color = "darkred",
+                                           bringToFront = TRUE)) %>% 
+  addLegend(pal = qpal_gr_plast,
+            title = "Quantiles (Plast. Surgery's growth)",
+            values = ~GrowthRate,
+            opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(100*x)))
+
+} else { if (input$title_growth == "Gastroenterology") {
+
+# Gastroenterology
+qpal_gr_gastro <- colorQuantile("Blues",
+                            domain = spec_doct_rc_gr_g %>% 
+                              st_drop_geometry() %>% 
+                              filter(Title == "Gastroenterology") %>% 
+                              select(GrowthRate), 
+                            n = 5)
+
+leaf_gr_gastro = spec_doct_rc_gr_g %>% 
+  filter(Title == "Gastroenterology") %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$Esri.WorldGrayCanvas,
+                   options = providerTileOptions(opacity = 0.5)) %>% 
+  setView(lat = 55, lng = 20, zoom = 3) %>%
+  addPolygons(weight = 1,
+              fillOpacity = 1,
+              # color = ~color(),
+              fillColor = ~colorQuantile("Blues",  GrowthRate)(GrowthRate), 
+              label = ~paste0("Country: ", 
+                              Country , 
+                              " - ",
+                              "Gastroenterologists (per cap): ", 
+                              prettyNum(round(GrowthRate,1), accuracy = 1)),
+              highlight = highlightOptions(weight = 2,
+                                           color = "darkblue",
+                                           bringToFront = TRUE)) %>% 
+  addLegend(pal = qpal_gr_gastro,
+            title = "Quantiles (Gastroenterologists' growth)",
+            values = ~GrowthRate,
+            opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(100*x)))
+
+} else { if (input$title_growth == "Immunology") {
+
+
+### Immunology
+qpal_gr_immun <- colorQuantile("Purples",
+                          domain = spec_doct_rc_gr_g %>% 
+                            st_drop_geometry() %>% 
+                            filter(Title == "Immunology") %>% 
+                            select(GrowthRate), 
+                          n = 5)
+
+leaf_gr_immun = spec_doct_rc_gr_g %>% 
+  filter(Title == "Immunology") %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$Esri.WorldGrayCanvas,
+                   options = providerTileOptions(opacity = 0.5)) %>% 
+  setView(lat = 55, lng = 20, zoom = 3) %>%
+  addPolygons(weight = 1,
+              fillOpacity = 1,
+              # color = ~color(),
+              fillColor = ~colorQuantile("Purples",  GrowthRate)(GrowthRate), 
+              label = ~paste0("Country: ", 
+                              Country , 
+                              " - ",
+                              "Immunologists (per cap): ", 
+                              prettyNum(round(GrowthRate,1), accuracy = 1)),
+              highlight = highlightOptions(weight = 2,
+                                           color = "darkblue",
+                                           bringToFront = TRUE)) %>% 
+  addLegend(pal = qpal_gr_immun,
+            title = "Quantiles (Immunologists' growth)",
+            values = ~GrowthRate,
+            opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(100*x)))
+
+} else { if (input$title_growth == "Microbiology-bacteriology") {
+
+
+### Microbiology-bacteriology
+qpal_gr_bact <- colorQuantile("Oranges",
+                               domain = spec_doct_rc_gr_g %>% 
+                                 st_drop_geometry() %>% 
+                                 filter(Title == "Microbiology-bacteriology") %>% 
+                                 select(GrowthRate), 
+                              n = 5)
+
+leaf_gr_bact = spec_doct_rc_gr_g %>% 
+  filter(Title == "Microbiology-bacteriology") %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$Esri.WorldGrayCanvas,
+                   options = providerTileOptions(opacity = 0.5)) %>% 
+  setView(lat = 55, lng = 20, zoom = 3) %>%
+  addPolygons(weight = 1,
+              fillOpacity = 1,
+              # color = ~color(),
+              fillColor = ~colorQuantile("Oranges",  GrowthRate)(GrowthRate), 
+              label = ~paste0("Country: ", 
+                              Country , 
+                              " - ",
+                              "Bacteriologists (per cap): ", 
+                              prettyNum(round(GrowthRate,1), accuracy = 1)),
+              highlight = highlightOptions(weight = 2,
+                                           color = "red",
+                                           bringToFront = TRUE)) %>% 
+  addLegend(pal = qpal_gr_bact,
+            title = "Quantiles (Bacteriologists' growth)",
+            values = ~GrowthRate,
+            opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(100*x)))
+
+} else { if (input$title_growth == "Urology") {
+
+
+### Urology
+qpal_gr_urolo <- colorQuantile("PuRd",
+                              domain = spec_doct_rc_gr_g %>% 
+                                st_drop_geometry() %>% 
+                                filter(Title == "Urology") %>% 
+                                select(GrowthRate), 
+                              n = 5)
+
+leaf_gr_urolo = spec_doct_rc_gr_g %>% 
+  filter(Title == "Urology") %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$Esri.WorldGrayCanvas,
+                   options = providerTileOptions(opacity = 0.5)) %>% 
+  setView(lat = 55, lng = 20, zoom = 3) %>%
+  addPolygons(weight = 1,
+              fillOpacity = 1,
+              # color = ~color(),
+              fillColor = ~colorQuantile("PuRd",  GrowthRate)(GrowthRate), 
+              label = ~paste0("Country: ", 
+                              Country , 
+                              " - ",
+                              "Urologists (per cap): ", 
+                              prettyNum(round(GrowthRate,1), accuracy = 1)),
+              highlight = highlightOptions(weight = 2,
+                                           color = "red",
+                                           bringToFront = TRUE)) %>% 
+  addLegend(pal = qpal_gr_urolo,
+            title = "Quantiles (Urologists' growth)",
+            values = ~GrowthRate,
+            opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(100*x)))
+
+
+} else {
+
+### Haematology
+qpal_gr_haema <- colorQuantile("PuBu",
+                               domain = spec_doct_rc_gr_g %>% 
+                                 st_drop_geometry() %>% 
+                                 filter(Title == "Haematology") %>% 
+                                 select(GrowthRate), 
+                               n = 5)
+
+leaf_gr_haema = spec_doct_rc_gr_g %>% 
+  filter(Title == "Haematology") %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$Esri.WorldGrayCanvas,
+                   options = providerTileOptions(opacity = 0.5)) %>% 
+  setView(lat = 55, lng = 20, zoom = 3) %>%
+  addPolygons(weight = 1,
+              fillOpacity = 1,
+              # color = ~color(),
+              fillColor = ~colorQuantile("PuBu",  GrowthRate)(GrowthRate), 
+              label = ~paste0("Country: ", 
+                              Country , 
+                              " - ",
+                              "Haematologists (per cap): ", 
+                              prettyNum(round(GrowthRate,1), accuracy = 1)),
+              highlight = highlightOptions(weight = 2,
+                                           color = "blue",
+                                           bringToFront = TRUE)) %>% 
+  addLegend(pal = qpal_gr_haema,
+            title = "Quantiles (Haematologists' growth)",
+            values = ~GrowthRate,
+            opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(100*x)))
+
+
+}}}}}}
+
+})
+  
+```
+
+
+```{r}
+
+renderLeaflet({
+
+react_growth_leaf()
+
+})
+
+```
+
+
+### Level Changes
+
+```{r reactive_diff_points}
+
+spec_sel = c("Specialist medical practitioners",
+             "Plastic surgery",
+             "Gastroenterology", 
+             "Immunology", 
+             "Microbiology-bacteriology", 
+             "Urology",
+             "Haematology")
+
+# Level comparaison
+fun_spec_doct08_15 = function(specif){
+  
+  spec_doct08_15 %>% 
+    select(geo, time, values, spec) %>% 
+    arrange(geo, time) %>% 
+    filter(spec == specif) %>% 
+    ggplot(aes(fct_reorder(geo, values), values, col = time)) + 
+    geom_point() +
+    geom_line(aes(group = geo),
+              size = .5,
+              color = "black",
+              arrow = arrow(length=unit(0.1, "cm"),
+                            ends="last",
+                            type = "closed")) +
+    scale_x_discrete("") +
+    scale_y_continuous("Per 100.000") +
+    ggtitle(specif) +
+    scale_color_discrete("Year") +
+
+    coord_flip() 
+  
+}
+
+
+gg_point0815 = lapply(spec_sel, fun_spec_doct08_15)
+
+
+
+react_diff_point = reactive({
+
+  
+  if (input$title_growth == "Specialist medical practitioners"){
+  
+  gg_diff_point = gg_point0815[[1]]
+  
+  } else { if (input$title_growth == "Plastic surgery") { 
+    
+    
+  gg_diff_point = gg_point0815[[2]]
+  
+  } else { if (input$title_growth == "Gastroenterology") { 
+    
+  gg_diff_point = gg_point0815[[3]]
+  
+  } else { if (input$title_growth == "Immunology") { 
+  
+  gg_diff_point = gg_point0815[[4]]
+    
+  } else { if (input$title_growth == "Microbiology-bacteriology") { 
+    
+  gg_diff_point = gg_point0815[[5]]
+    
+  } else { if (input$title_growth == "Urology") { 
+    
+  gg_diff_point = gg_point0815[[6]]
+    
+  } else {
+    
+  gg_diff_point = gg_point0815[[7]]
+  
+  }}}}}}
+  
+
+  gg_diff_point
+    
+})
+
+```
+
+
+```{r diff_point_plot}
+
+renderPlotly({
+
+      
+     ggplotly(react_diff_point(), tooltip = c("time", "values")) 
+  
+  
+})   
+
+
+```
+
+
+### Summary
+
+
+```{r}
+
+### Summary EU Density Population Table
+DT::renderDataTable({
+
+datatable(GrowthRates_Physicians_Sum %>% 
+            mutate(Title = fct_relevel(Title,
+                                       "Specialist medical practitioners", 
+                                       "Plastic surgery", 
+                                       "Gastroenterology", 
+                                       "Immunology", 
+                                       "Microbiology-bacteriology", 
+                                       "Urology",
+                                       "Haematology")),
+          rownames=FALSE,
+          extensions = c("FixedColumns"),
+          options = list(scrollX = TRUE, 
+                         fixedColumns = list(leftColumns = 1),
+                         pageLength=10,
+                         language = list(sSearch = "Filter:")))  %>% 
+  formatRound("Min", 
+              mark = ".", 
+              digits = 1) %>% 
+
+  formatRound("Median", 
+              mark = ".", 
+              digits = 1) %>% 
+
+  formatRound("Mean", 
+              mark = ".", 
+              digits = 1) %>% 
+ 
+  formatRound("Max", 
+              mark = ".", 
+              digits = 1) %>% 
+
+  formatRound("Std_Deviation", 
+              mark = ".", 
+              digits = 1) 
+
+})
+
+```
+
+
+
+Column {data-width=300}
+-----------------------------------------------------------------------
+
+### Latest Growth Rates
+
+
+```{r}
+
+### Plotting bar Charts - data-height=300
+
+react_growth_bar <- reactive({
+  
+  data_bar = react_growth_map()
+  
+  if (input$title_growth == "Specialist medical practitioners"){
+    
+    
+gg_growth_bar= data_bar %>% 
+  # st_drop_geometry() %>% 
+  mutate(Country = as.factor(Country)) %>% 
+  filter(Title %in% c("Specialist medical practitioners")) %>% 
+  select(Country, Title, GrowthRate) %>%
+  arrange(Title, -GrowthRate) %>%
+  ggplot(aes(fct_reorder(Country, GrowthRate), GrowthRate)) + 
+  geom_col(fill = "#008837") +
+  scale_x_discrete("") +
+  scale_y_continuous("Growth rates in pct.") +
+  ggtitle("Specialist medical practitioners") +
+  facet_grid(Title ~ .) +
+  coord_flip() 
+
+
+} else { if (input$title_growth == "Plastic surgery"){
+
+gg_growth_bar = data_bar %>% 
+  # st_drop_geometry() %>% 
+  filter(Title %in% c("Plastic surgery")) %>% 
+  select(Country, Title, GrowthRate) %>%
+  arrange(Title, -GrowthRate) %>%
+  ggplot(aes(fct_reorder(Country, GrowthRate), GrowthRate)) + 
+  geom_col(fill = "#ca0020") +
+  scale_x_discrete("") +
+  scale_y_continuous("Growth rates in pct.") +
+  ggtitle("Plastic surgery") +
+  coord_flip()
+
+
+} else { if (input$title_growth == "Gastroenterology"){
+
+gg_growth_bar = data_bar %>% 
+  # st_drop_geometry() %>% 
+  mutate(Country = as.factor(Country)) %>% 
+  filter(Title %in% c("Gastroenterology")) %>% 
+  select(Country, Title, GrowthRate) %>%
+  arrange(Title, -GrowthRate) %>%
+  ggplot(aes(fct_reorder(Country, GrowthRate), GrowthRate)) + 
+  geom_col(fill = "#0571b0") +
+  scale_x_discrete("") +
+  scale_y_continuous("Growth rates in pct.") +
+  ggtitle("Gastroenterology") +
+  coord_flip() 
+
+} else { if (input$title_growth == "Immunology"){ 
+
+
+gg_growth_bar = data_bar %>% 
+  # st_drop_geometry() %>% 
+  mutate(Country = as.factor(Country)) %>% 
+  filter(Title %in% c("Immunology")) %>% 
+  select(Country, Title, GrowthRate) %>%
+  arrange(Title, -GrowthRate) %>%
+  ggplot(aes(fct_reorder(Country, GrowthRate), GrowthRate)) + 
+  geom_col(fill = "#7b3294") +
+  scale_x_discrete("") +
+  scale_y_continuous("Growth rates in pct.") +
+  ggtitle("Immunology") +
+  coord_flip() 
+
+} else { if (input$title_growth == "Microbiology-bacteriology"){ 
+
+
+gg_growth_bar = data_bar %>% 
+  # st_drop_geometry() %>% 
+  mutate(Country = as.factor(Country)) %>% 
+  filter(Title %in% c("Microbiology-bacteriology")) %>% 
+  select(Country, Title, GrowthRate) %>%
+  arrange(Title, -GrowthRate) %>%
+  ggplot(aes(fct_reorder(Country, GrowthRate), GrowthRate)) + 
+  geom_col(fill = "#fdcc8a") +
+  scale_x_discrete("") +
+  scale_y_continuous("Growth rates in pct.") +
+  ggtitle("Microbiology-bacteriology") +
+  coord_flip() 
+
+
+} else { if (input$title_growth == "Urology"){ 
+
+
+
+gg_growth_bar = data_bar %>% 
+  # st_drop_geometry() %>% 
+  mutate(Country = as.factor(Country)) %>% 
+  filter(Title %in% c("Urology")) %>% 
+  select(Country, Title, GrowthRate) %>%
+  arrange(Title, -GrowthRate) %>%
+  ggplot(aes(fct_reorder(Country, GrowthRate), GrowthRate)) + 
+  geom_col(fill = "#cbc9e2") +
+  scale_x_discrete("") +
+  scale_y_continuous("Growth rates in pct.") +
+  ggtitle("Urology") +
+  coord_flip()  
+
+} else {
+
+
+gg_growth_bar= data_bar %>% 
+  # st_drop_geometry() %>% 
+  mutate(Country = as.factor(Country)) %>% 
+  filter(Title %in% c("Haematology")) %>% 
+  select(Country, Title, GrowthRate) %>%
+  arrange(Title, -GrowthRate) %>%
+  # top_n(10) %>% 
+  ggplot(aes(fct_reorder(Country, GrowthRate), GrowthRate)) + 
+  geom_col(fill = "#08519c") +
+  scale_x_discrete("") +
+  scale_y_continuous("Growth rates in pct.") +
+  ggtitle("Haematology") +
+  coord_flip()
+
+}}}}}}
+  
+gg_growth_bar
+  
+})
+
+
+```
+
+
+
+```{r growth_bar_plot}
+renderPlotly({
+
+      
+     ggplotly(react_growth_bar(), tooltip = c("Country", "GrowthRate")) 
+  
+  
+})     
+```
+
+
+
+
+Frequency Visits
+===============================================================================
+
+
+```{r Europe_physicians_freq_visits, include=FALSE}
+
+# EU Physicians Table 
+  react_freq_visits_DT <- reactive({
+
+    data1 <- visit12_doct1_tot_country ### No gis data (not merged with nuts0)
+    
+      data1 <- data1 %>% 
+
+        filter(geo == input$country_freq_visits)
+    
+    data1
+  })
+
+# EU Physicians Mpas 
+  react_freq_visits_map <- reactive({
+
+    data2 <- visit12_doct1_tot_gcountry %>% 
+      st_drop_geometry() %>% 
+        filter(Physician_Visits == input$physician_freq_visits)
+    
+    data2
+  })
+
+```
+
+
+Column {data-width=300 .sidebar}
+-----------------------------------------------------------------------
+
+```{r freq_visits_DT}
+
+selectInput("country_freq_visits", 
+            "Select a country:",
+            choices = c( ## "All Countries", EU28 in the summary instead
+                        visit12_doct1_tot_country %>% 
+                          select(geo) %>% 
+                          filter(geo != "EU28") %>% 
+                          mutate(geo = droplevels(geo)) %>% 
+                          pull(geo) %>% 
+                          levels))
+
+# br()
+
+selectInput("physician_freq_visits", 
+            "Select a visit frequency:",
+            choices = c(visit12_doct1_tot_gcountry %>% 
+                          st_drop_geometry() %>% 
+                          pull(Physician_Visits) %>% 
+                          levels)) 
+
+DT::renderDataTable({
+
+datatable(  react_freq_visits_DT() %>% 
+              # st_drop_geometry() %>% 
+            select(Country = geo, Physician_Visits, Percentage = values) %>% 
+            arrange(-Percentage),
+          rownames=FALSE,
+          extensions = c("FixedColumns"),
+          options = list(scrollX = TRUE, 
+                         fixedColumns = list(leftColumns = 1),
+                         pageLength=5,
+                         columnDefs = list(list(className = 'dt-center', targets = "_all")),
+                         language = list(sSearch = "Filter:")))  %>% 
+  formatRound("Percentage", 
+              mark = ".", 
+              digits = 1)
+  
+  })
+
+```
+
+
+
+Column {data-width=400 .tabset}
+-----------------------------------------------------------------------
+
+### Physicians' Clusters
+
+
+```{r freq_visits_cluster}
+
+# European physicians by speciality (PCA1)
+
+renderPlot({
+
+fviz_cluster(res3.hcpc,
+             main = "Cluster Plot of Frequency Visits",
+             axes = 1:2, 
+             repel = T, 
+             ggtheme = theme_bw() +
+  theme(text = element_text(family = "serif", size = 14),
+        title = element_text(color = "#990000"))) # #8b0000
+
+ })
+```
+
+
+### Physicians' Maps
+
+
+```{r react_map_freq_visits, include = FALSE}
+
+# Looping over colors and visit frequencies
+
+df_colors = brewer.pal.info
+all_colors = rownames(df_colors)
+
+seq_colors = df_colors %>% 
+  cbind(all_colors) %>% 
+  filter(category == "seq") %>% 
+  mutate(all_colors = as.character(all_colors)) %>% 
+  pull(all_colors)
+  
+
+### Preparing 2 list to map over for auto-leaflet maps
+colors = as.list(seq_colors[1:15])  
+
+physician_visits = as.list(c("0 visits to Generalists",
+        "1-2 visits to Generalists",
+        "3-5 visits to Generalists",
+        "6-9 visits to Generalists",
+        "10+ visits to Generalists",
+        "0 visits to Surgeons",
+        "1-2 visits to Surgeons",
+        "3-5 visits to Surgeons",
+        "6-9 visits to Surgeons",
+        "10+ visits to Surgeons",
+        "0 visits to Dentists",
+        "1-2 visits to Dentists",
+        "3-5 visits to Dentists",
+        "6-9 visits to Dentists",
+        "10+ visits to Dentists"))
+
+### Mapping function
+
+fun_map_col_visit = function(col, visit){
+qpal <- colorQuantile(col,
+                           domain = visit12_doct1_tot_gcountry %>% 
+                             st_drop_geometry() %>% 
+                             filter(Physician_Visits == visit) %>% 
+                             select(Percentage), 
+                           n = 5)
+
+leaf_spec = visit12_doct1_tot_gcountry %>% 
+  filter(Physician_Visits == visit) %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$Esri.WorldGrayCanvas,
+                   options = providerTileOptions(opacity = 0.5)) %>% 
+  setView(lat = 55, lng = 20, zoom = 3) %>%
+  addPolygons(weight = 1,
+              fillOpacity = 1,
+              # color = ~color(),
+              fillColor = ~colorQuantile(col,  Percentage)(Percentage), 
+              label = ~paste0("Country: ", 
+                              Country_Name, 
+                              " - ",
+                              visit, 
+                              prettyNum(round(Percentage,1), accuracy = 1)),
+              highlight = highlightOptions(weight = 2,
+                                           color = "white",
+                                           bringToFront = TRUE)) %>% 
+  addLegend(pal = qpal,
+            title = paste0("Quantiles: ", visit),
+            values = ~Percentage,
+            opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(100*x)))
+}
+
+
+leaflet_freq_visits = map2(colors, physician_visits, fun_map_col_visit)
+
+
+react_leaflet_freq_visits = reactive({
+  
+  data = data.frame(Number = seq(1:15),
+            Physician_Visits = c("0 visits to Generalists",
+        "1-2 visits to Generalists",
+        "3-5 visits to Generalists",
+        "6-9 visits to Generalists",
+        "10+ visits to Generalists",
+        "0 visits to Surgeons",
+        "1-2 visits to Surgeons",
+        "3-5 visits to Surgeons",
+        "6-9 visits to Surgeons",
+        "10+ visits to Surgeons",
+        "0 visits to Dentists",
+        "1-2 visits to Dentists",
+        "3-5 visits to Dentists",
+        "6-9 visits to Dentists",
+        "10+ visits to Dentists"))
+  
+  map_selection = data %>% 
+    filter(Physician_Visits == input$physician_freq_visits) %>% 
+    select(Number) %>% 
+      pull
+  
+  leaflet_freq_visits[[map_selection]]
+  
+ })
+```
+
+
+
+
+```{r leaflet_freq_visits}
+
+renderLeaflet({
+
+react_leaflet_freq_visits()
+
+})
+
+```
+
+
+### Summary Data
+
+
+```{r freq_visits_summary_DT}
+# source("0121_src_cd_densityEU_sum.R")
+
+visit12_doct1_tot_sum = visit12_doct1_tot_country %>% 
+  filter(geo == "EU28") 
+
+### Summary EU Density Population Table
+DT::renderDataTable ({ 
+
+datatable(visit12_doct1_tot_sum %>% 
+  select(geo, Physician_Visits, Percentage = values) %>% 
+  arrange(-Percentage),
+          rownames=FALSE,
+          extensions = c("FixedColumns"),
+          options = list(scrollX = TRUE, 
+                         fixedColumns = list(leftColumns = 1),
+                         pageLength=10,
+                         language = list(sSearch = "Filter:")))  %>% 
+  formatRound("Percentage", 
+              mark = ".", 
+              digits = 1)
+
+})
+
+```
+
+
+
+Column {data-width=300 data-height=300}
+-----------------------------------------------------------------------
+
+
+### Top-10 Barcharts
+
+
+```{r react_bar_freq_visits}
+
+### Plotting bar Charts
+
+fun_color_extract = function(couleur){
+  
+  brewer.pal(5, couleur)[5]
+  
+}
+
+bar_colors = map(colors, fun_color_extract)
+
+physician_visits = as.list(c("0 visits to Generalists",
+                             "1-2 visits to Generalists",
+                             "3-5 visits to Generalists",
+                             "6-9 visits to Generalists",
+                             "10+ visits to Generalists",
+                             "0 visits to Surgeons",
+                             "1-2 visits to Surgeons",
+                             "3-5 visits to Surgeons",
+                             "6-9 visits to Surgeons",
+                             "10+ visits to Surgeons",
+                             "0 visits to Dentists",
+                             "1-2 visits to Dentists",
+                             "3-5 visits to Dentists",
+                             "6-9 visits to Dentists",
+                             "10+ visits to Dentists"))
+
+
+fun_bar_freq_visits = function(couleur, visits){
+
+  visit12_doct1_tot_country %>% 
+  # st_drop_geometry() %>% 
+  rename(Country = geo) %>% 
+  filter(Physician_Visits == visits) %>% 
+  select(Country, Physician_Visits, values) %>%
+  arrange(Physician_Visits, -values) %>%
+  top_n(10) %>% 
+  ggplot(aes(fct_reorder(Country, values), values)) + 
+  geom_col(fill = couleur) +
+  scale_x_discrete("") +
+  scale_y_continuous("Percentage") +
+  ggtitle(visits) +
+  coord_flip() 
+
+
+}
+
+
+ggbar_freq_visits = map2(bar_colors, physician_visits, fun_bar_freq_visits)
+
+
+react_bar_freq_visits <- reactive({
+   
+   
+    data = data.frame(Number = seq(1:15),
+            Physician_Visits = c("0 visits to Generalists",
+        "1-2 visits to Generalists",
+        "3-5 visits to Generalists",
+        "6-9 visits to Generalists",
+        "10+ visits to Generalists",
+        "0 visits to Surgeons",
+        "1-2 visits to Surgeons",
+        "3-5 visits to Surgeons",
+        "6-9 visits to Surgeons",
+        "10+ visits to Surgeons",
+        "0 visits to Dentists",
+        "1-2 visits to Dentists",
+        "3-5 visits to Dentists",
+        "6-9 visits to Dentists",
+        "10+ visits to Dentists"))
+  
+  bar_selection = data %>% 
+    filter(Physician_Visits == input$physician_freq_visits) %>% # 
+    select(Number) %>% 
+      pull
+  
+  ggbar_freq_visits[[bar_selection]]
+  
+
+})  
+  
+  
+```
+
+
+
+```{r barchart_freq_visits}
+renderPlotly({
+
+      
+     ggplotly(react_bar_freq_visits(), tooltip = c("Country", "values")) 
+  
+  
+})     
+```
+
+
+### Visit Frequency Density
+
+```{r react_freq_visits_density, include = FALSE}
+
+#### Density Plots function
+
+fun_dens_freq_visits = function(couleur, visits){
+
+ggplot(visit12_doct1_tot_country %>% 
+         filter(Physician_Visits == visits), 
+                            aes(values)) +
+  geom_density(alpha = .5, 
+               fill = couleur,
+               color = NA,
+               show.legend = FALSE) + 
+  scale_x_continuous("Percentage")
+
+}
+
+### Bar = Density discrete colors
+ggdens_freq_visits = map2(bar_colors, physician_visits, fun_dens_freq_visits)
+
+react_dens_freq_visits <- reactive({
+   
+   
+    data = data.frame(Number = seq(1:15),
+            Physician_Visits = c("0 visits to Generalists",
+        "1-2 visits to Generalists",
+        "3-5 visits to Generalists",
+        "6-9 visits to Generalists",
+        "10+ visits to Generalists",
+        "0 visits to Surgeons",
+        "1-2 visits to Surgeons",
+        "3-5 visits to Surgeons",
+        "6-9 visits to Surgeons",
+        "10+ visits to Surgeons",
+        "0 visits to Dentists",
+        "1-2 visits to Dentists",
+        "3-5 visits to Dentists",
+        "6-9 visits to Dentists",
+        "10+ visits to Dentists"))
+  
+  dens_selection = data %>% 
+    filter(Physician_Visits == input$physician_freq_visits) %>% #  %>% 
+    select(Number) %>% 
+      pull
+  
+  ggdens_freq_visits[[dens_selection]]
+  
+
+})  
+
+```
+
+
+```{r freq_visits_density}
+
+
+renderPlotly({
+
+  
+  ggplotly(react_dens_freq_visits(), tooltip = c("Country", "values")) 
+  
+  
+})
+
+```
+
+
+
+Visits by Age/Education
+===============================================================================
+
+
+```{r Europe_physicians_age_edu, include=FALSE}
+
+# EU Physicians Table 
+  react_age_edu_DT <- reactive({
+
+    data1 <- visit12_doct1_age_edu_country 
+    
+      data1 <- data1 %>% 
+        
+        filter(geo == input$country_age_edu)
+  
+    data1
+  })
+
+# EU Physicians Mpas 
+  react_age_edu_map <- reactive({
+
+    data2 <- visit12_doct1_age_edu_gcountry %>% 
+      st_drop_geometry() %>% 
+        filter(Frequency_Edu_Age == input$physician_age_edu)
+    
+    data2
+  })
+
+```
+
+
+Column {data-width=300 .sidebar}
+-----------------------------------------------------------------------
+
+```{r age_edu_DT}
+
+selectInput("country_age_edu", 
+            "Select a country:",
+            choices = c( ## "All Countries", EU28 in the summary instead
+                        visit12_doct1_age_edu_country %>% 
+                          select(geo) %>% 
+                          filter(geo != "EU28") %>% 
+                          mutate(geo = droplevels(geo)) %>% 
+                          pull(geo) %>% 
+                          levels))
+                       
+# br()
+
+selectInput("physician_age_edu", 
+            "Select a frequency by education and age group:",
+            choices = c(visit12_doct1_age_edu_country %>% 
+                          # st_drop_geometry() %>% 
+                          pull(Frequency_Edu_Age) %>% 
+                          levels))
+
+DT::renderDataTable({
+
+datatable(  react_age_edu_DT() %>% 
+              # st_drop_geometry() %>% 
+            select(Country = geo, Frequency_Edu_Age, Percentage = values) %>% 
+            arrange(-Percentage),
+          rownames=FALSE,
+          extensions = c("FixedColumns"),
+          options = list(scrollX = TRUE, 
+                         fixedColumns = list(leftColumns = 1),
+                         pageLength=5,
+                         columnDefs = list(list(className = 'dt-center', targets = "_all")),
+                         language = list(sSearch = "Filter:")))  %>% 
+  formatRound("Percentage", 
+              mark = ".", 
+              digits = 1)
+  
+  })
+
+```
+
+
+
+Column {data-width=400 .tabset}
+-----------------------------------------------------------------------
+
+### Visit Clusters
+
+
+```{r age_edu_cluster}
+
+# European physicians by speciality (PCA1)
+
+renderPlot({
+
+fviz_cluster(res4.hcpc,
+             main = "Clustering Frequency Visits by Education and Age",
+             axes = 1:2, 
+             repel = T, 
+             ggtheme = theme_bw() +
+  theme(text = element_text(family = "serif", size = 14),
+        title = element_text(color = "#990000"))) # #8b0000
+
+ })
+```
+
+
+### Visit Maps
+
+
+```{r react_map_age_edu, include = FALSE}
+
+# Looping over colors and visit frequencies
+df_colors = brewer.pal.info
+all_colors = rownames(df_colors)
+
+seq_colors = df_colors %>% 
+  cbind(all_colors) %>% 
+  filter(category == "seq") %>% 
+  mutate(all_colors = as.character(all_colors)) %>% 
+  pull(all_colors)
+  
+### Preparing 2 list to map over for auto-leaflet maps
+colors = as.list(seq_colors[1:18])  
+
+frequency_edu_age_list = as.list(frequency_edu_age)
+
+### Mapping function
+
+fun_map_age_edu = function(col, visit){
+qpal <- colorQuantile(col,
+                           domain = visit12_doct1_age_edu_gcountry %>% 
+                             st_drop_geometry() %>% 
+                             filter(Frequency_Edu_Age == visit) %>% 
+                             select(Percentage), 
+                           n = 5)
+
+leaf_spec = visit12_doct1_age_edu_gcountry %>% 
+  filter(Frequency_Edu_Age == visit) %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$Esri.WorldGrayCanvas,
+                   options = providerTileOptions(opacity = 0.5)) %>% 
+  setView(lat = 55, lng = 20, zoom = 3) %>%
+  addPolygons(weight = 1,
+              fillOpacity = 1,
+              # color = ~color(),
+              fillColor = ~colorQuantile(col,  Percentage)(Percentage), 
+              label = ~paste0("Country: ", 
+                              Country_Name, 
+                              " - ",
+                              visit, 
+                              prettyNum(round(Percentage,1), accuracy = 1)),
+              highlight = highlightOptions(weight = 2,
+                                           color = "white",
+                                           bringToFront = TRUE)) %>% 
+  addLegend(pal = qpal,
+            title = paste0("Quantiles: ", visit),
+            values = ~Percentage,
+            opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(100*x)))
+}
+
+
+leaflet_age_edu = map2(colors, frequency_edu_age_list, fun_map_age_edu)
+
+
+react_leaflet_age_edu = reactive({
+  
+  data = data.frame(Number = seq(1:18),
+            Visits_age_edu = frequency_edu_age)
+  
+  map_selection = data %>% 
+    filter(Visits_age_edu == input$physician_age_edu) %>% 
+    select(Number) %>% 
+      pull
+  
+  leaflet_age_edu[[map_selection]]
+  
+ })
+```
+
+
+
+
+```{r leaflet_age_edu}
+
+renderLeaflet({
+
+react_leaflet_age_edu()
+
+})
+
+```
+
+
+### Summary Data
+
+
+```{r age_edu_summary_DT}
+
+visit12_doct1_age_edu_country_sum = visit12_doct1_age_edu_country %>% 
+  filter(geo %in% c("EU28"))
+
+### Summary EU Density Population Table
+DT::renderDataTable ({ 
+
+datatable(visit12_doct1_age_edu_country_sum %>% 
+  select(Region = geo, Frequency_Edu_Age, Percentage = values) %>% 
+  arrange(-Percentage),
+          rownames=FALSE,
+          extensions = c("FixedColumns"),
+          options = list(scrollX = TRUE, 
+                         fixedColumns = list(leftColumns = 1),
+                         pageLength=10,
+                         language = list(sSearch = "Filter:")))  %>% 
+  formatRound("Percentage", 
+              mark = ".", 
+              digits = 1)
+
+})
+
+```
+
+
+
+Column {data-width=300 data-height=300}
+-----------------------------------------------------------------------
+
+
+### Top-10 Barcharts
+
+
+```{r react_bar_age_edu, include = FALSE}
+
+### Plotting bar Charts
+
+colores = as.list(seq_colors[1:18]) 
+
+fun_color_extract = function(couleur){
+  
+  brewer.pal(5, couleur)[5]
+  
+}
+
+bar_colores = map(colores, fun_color_extract)
+
+fun_bar_age_edu = function(couleur, visits){
+
+  visit12_doct1_age_edu_country %>% 
+  # st_drop_geometry() %>% 
+  rename(Country = geo) %>% 
+  filter(Country != "EU28") %>% 
+  filter(Frequency_Edu_Age == visits) %>% 
+  select(Country, Frequency_Edu_Age, values) %>%
+  arrange(Frequency_Edu_Age, -values) %>%
+  top_n(10) %>% 
+  ggplot(aes(fct_reorder(Country, values), values)) + 
+  geom_col(fill = couleur) +
+  scale_x_discrete("") +
+  scale_y_continuous("Percentage") +
+  ggtitle(visits) +
+  coord_flip() 
+
+
+}
+
+
+ggbar_age_edu = map2(bar_colores, frequency_edu_age_list, fun_bar_age_edu)
+
+
+react_bar_age_edu <- reactive({
+   
+   
+    data = data.frame(Number = seq(1:18),
+            Visits_age_edu = frequency_edu_age)
+  
+  bar_selection = data %>% 
+    filter(Visits_age_edu == input$physician_age_edu) %>% #  %>% 
+    select(Number) %>% 
+      pull()
+  
+  ggbar_age_edu[[bar_selection]]
+  
+
+})  
+  
+  
+```
+
+
+
+```{r barchart_age_edu}
+renderPlot({
+
+      
+     react_bar_age_edu() # ggplotly(, tooltip = c("Country", "values")) 
+  
+  
+})     
+```
+
+
+### Visit Frequency Density
+
+```{r react_age_edu_density, include = FALSE}
+
+#### Density Plots function
+
+fun_dens_age_edu = function(couleur, visits){
+
+ggplot(visit12_doct1_age_edu_country %>% 
+         filter(Frequency_Edu_Age == visits), 
+                            aes(values)) +
+  geom_density(alpha = .5, 
+               fill = couleur,
+               color = NA,
+               show.legend = FALSE) + 
+  scale_x_continuous("Percentage")
+
+}
+
+### Bar = Density discrete colors
+ggdens_age_edu = map2(bar_colores, frequency_edu_age_list, fun_dens_age_edu)
+
+react_dens_age_edu <- reactive({
+   
+   
+    data = data.frame(Number = seq(1:18),
+            Visits_age_edu = frequency_edu_age)
+  
+  dens_selection = data %>% 
+    filter(Visits_age_edu == input$physician_age_edu) %>%  
+    select(Number) %>% 
+      pull()
+  
+  ggdens_age_edu[[dens_selection]]
+  
+
+})  
+
+```
+
+
+```{r age_edu_density}
+
+
+renderPlotly({
+
+  
+  ggplotly(react_dens_age_edu(), tooltip = c("Country", "values")) 
+
+  
+})
+
+```
+
+
+
+
+
+Visits by Employment/Income
+===============================================================================
+
+
+```{r Europe_physicians_em_inc, include=FALSE}
+
+# EU Physicians Table 
+  react_em_inc_DT <- reactive({
+
+    data1 <- doct_2_sel_country ### No gis data (not merged with nuts0)
+
+      data1 <- data1 %>% 
+
+        filter(geo == input$country_em_inc)
+
+    data1
+  })
+
+# EU Physicians Mpas 
+  react_em_inc_map <- reactive({
+
+    data2 <- doct_2_sel_gcountry %>% 
+      st_drop_geometry() %>% 
+        filter(Frequency_Employ_Income == input$physician_em_inc)
+    
+    data2
+  })
+
+```
+
+
+Column {data-width=300 .sidebar}
+-----------------------------------------------------------------------
+
+```{r em_inc_DT}
+
+selectInput("country_em_inc", 
+            "Select a country:",
+            choices = c( ## "All Countries", EU28 in the summary instead
+                        doct_2_sel_country %>% 
+                          select(geo) %>% 
+                          filter(geo != "EU28") %>% 
+                          mutate(geo = droplevels(geo)) %>% 
+                          pull(geo) %>% 
+                          levels))
+# br()
+
+selectInput("physician_em_inc", 
+            "Select a frequency by employment and income quantile:",
+            choices = c(doct_2_sel_country %>% 
+                          # st_drop_geometry() %>% 
+                          pull(Frequency_Employ_Income) %>% 
+                          levels)) 
+
+DT::renderDataTable({
+
+datatable(  react_em_inc_DT() %>% 
+              # st_drop_geometry() %>% 
+            select(Country = geo, Frequency_Employ_Income, Percentage = values) %>% 
+            arrange(-Percentage),
+          rownames=FALSE,
+          extensions = c("FixedColumns"),
+          options = list(scrollX = TRUE, 
+                         fixedColumns = list(leftColumns = 1),
+                         pageLength=5,
+                         columnDefs = list(list(className = 'dt-center', targets = "_all")),
+                         language = list(sSearch = "Filter:")))  %>% 
+  formatRound("Percentage", 
+              mark = ".", 
+              digits = 1)
+  
+  })
+
+```
+
+
+
+Column {data-width=400 .tabset}
+-----------------------------------------------------------------------
+
+### Visit Clusters
+
+
+```{r em_inc_cluster}
+
+# European physicians by speciality (PCA1)
+
+renderPlot({
+
+fviz_cluster(res5.hcpc,
+             main = "Clustering Frequency Visits by Education and Age",
+             axes = 1:2, 
+             repel = T, 
+             ggtheme = theme_bw() +
+  theme(text = element_text(family = "serif", size = 14),
+        title = element_text(color = "#990000"))) # #8b0000
+
+ })
+```
+
+
+
+### Visit Maps
+
+
+```{r react_map_em_inc, include = FALSE}
+
+# Looping over colors and visit frequencies
+df_colors = brewer.pal.info
+all_colors = rownames(df_colors)
+
+seq_colors = df_colors %>% 
+  cbind(all_colors) %>% 
+  filter(category == "seq") %>% 
+  mutate(all_colors = as.character(all_colors)) %>% 
+  pull(all_colors)
+
+### Preparing 2 list to map over for auto-leaflet maps
+farve = as.list(seq_colors[1:12])  
+
+Frequency_Employ_Income_list = as.list(frequency_em_inc)
+
+### Mapping function
+
+fun_map_em_inc = function(col, visit){
+qpal <- colorQuantile(col,
+                           domain = doct_2_sel_gcountry %>% 
+                             st_drop_geometry() %>% 
+                             filter(Frequency_Employ_Income == visit) %>% 
+                             select(Percentage), 
+                           n = 5)
+
+leaf_spec = doct_2_sel_gcountry %>% 
+  filter(Frequency_Employ_Income == visit) %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$Esri.WorldGrayCanvas,
+                   options = providerTileOptions(opacity = 0.5)) %>% 
+  setView(lat = 55, lng = 20, zoom = 3) %>%
+  addPolygons(weight = 1,
+              fillOpacity = 1,
+              # color = ~color(),
+              fillColor = ~colorQuantile(col,  Percentage)(Percentage), 
+              label = ~paste0("Country: ", 
+                              Country_Name, 
+                              " - ",
+                              visit, 
+                              prettyNum(round(Percentage,1), accuracy = 1)),
+              highlight = highlightOptions(weight = 2,
+                                           color = "white",
+                                           bringToFront = TRUE)) %>% 
+  addLegend(pal = qpal,
+            title = paste0("Quantiles: ", visit),
+            values = ~Percentage,
+            opacity = 1.0,
+            labFormat = labelFormat(transform = function(x) round(100*x)))
+}
+
+
+leaflet_em_inc = map2(farve, Frequency_Employ_Income_list, fun_map_em_inc)
+
+
+react_leaflet_em_inc = reactive({
+  
+  data = data.frame(Number = seq(1:12),
+            Visits_em_inc = frequency_em_inc)
+  
+  map_selection = data %>% 
+    filter(Visits_em_inc == input$physician_em_inc) %>% #  %>% 
+    select(Number) %>% 
+      pull
+  
+  leaflet_em_inc[[map_selection]]
+  
+ })
+```
+
+
+
+
+```{r leaflet_em_inc}
+
+renderLeaflet({
+
+react_leaflet_em_inc()
+
+})
+
+```
+
+### Visits by Income
+
+```{r}
+
+selectInput("visit_quantile", 
+            "Select an employment status and income quantile:",
+            choices = c("0-Visits for Employed People",
+                        "10+ Visits for Employed People",
+                        "0-Visits for Unemployed People",
+                        "10+ Visits for Unemployed People")) 
+
+```
+
+
+```{r react_quantile, include = FALSE}
+
+# EU Physicians Table 
+  react_quantile_point <- reactive({
+    
+  if (input$visit_quantile == "0-Visits for Employed People"){
+ 
+    ### 0-visits - Employed
+gg_quant = visit12_doct1_nvr_emp_quant  %>% 
+  # select(geo, time, values, spec) %>% 
+  arrange(-values) %>% 
+  filter(wstatus == "EMP") %>% 
+  ggplot(aes(fct_reorder(geo, values), values, col = quantile)) + 
+  geom_point() +
+  geom_line(aes(group = geo),
+            size = .5,
+            color = "grey") +
+
+  scale_x_discrete("") +
+  scale_y_continuous("") +
+  ggtitle("0-Visits: Employed by Income") + 
+  scale_color_discrete("Quantile") +
+
+  coord_flip() 
+
+       
+  } else { if (input$visit_quantile == "10+ Visits for Employed People"){
+    
+    ### +10 visits - Employed
+gg_quant = visit12_doct1_ge10_emp_quant  %>% 
+  # select(geo, time, values, spec) %>% 
+  arrange(-values) %>% 
+  filter(wstatus == "EMP") %>% 
+  ggplot(aes(fct_reorder(geo, values), values, col = quantile)) + 
+  geom_point() +
+  geom_line(aes(group = geo),
+            size = .5,
+            color = "grey") +
+
+  scale_x_discrete("") +
+  scale_y_continuous("") +
+  ggtitle("10+ Visits: Employed by Income") + 
+  scale_color_discrete("Quantile") +
+
+  coord_flip() 
+    
+  } else { if (input$visit_quantile == "0-Visits for Unemployed People"){
+    
+    ### NVR visits - Unemployed
+gg_quant = visit12_doct1_nvr_emp_quant  %>% 
+  # select(geo, time, values, spec) %>% 
+  arrange(-values) %>% 
+  filter(wstatus == "UNE") %>% 
+  filter(!(geo %in% geo_nvr_unemp)) %>% 
+  ggplot(aes(fct_reorder(geo, values), values, col = quantile)) + 
+  geom_point() +
+  geom_line(aes(group = geo),
+            size = .5,
+            color = "grey") +
+
+  scale_x_discrete("") +
+  scale_y_continuous("") +
+  ggtitle("0-Visits: Unemployed by Income") + 
+  scale_color_discrete("Quantile") +
+
+  coord_flip() 
+    
+    
+  } else {
+    
+    
+    ### +10 visits - Unemployed
+gg_quant = visit12_doct1_ge10_emp_quant  %>% 
+  # select(geo, time, values, spec) %>% 
+  arrange(-values) %>% 
+  filter(wstatus == "UNE") %>% 
+  filter(!(geo %in% geo_ge10_unemp)) %>% # filter out missing trio
+  ggplot(aes(fct_reorder(geo, values), values, col = quantile)) + 
+  geom_point() +
+  geom_line(aes(group = geo),
+            size = .5,
+            color = "grey") +
+
+  scale_x_discrete("") +
+  scale_y_continuous("") +
+  ggtitle("10+ Visits: Unemployed by Income ") +
+  scale_color_discrete("Quantile") +
+
+  coord_flip() 
+    
+  }}}
+    
+ 
+    gg_quant
+    
+       
+  })
+
+
+
+```
+
+
+```{r point_quantile}
+
+renderPlotly ({ 
+
+ggplotly(react_quantile_point(), tooltip = c("geo", "values"))
+
+ })
+```
+
+
+### Summary Data
+
+
+```{r em_inc_summary_DT}
+
+doct_2_sel_country_sum = doct_2_sel_country %>% 
+  filter(geo %in% c("EU28"))
+
+### Summary EU Density Population Table
+DT::renderDataTable ({ 
+
+datatable(doct_2_sel_country_sum %>% 
+  select(Region = geo, Frequency_Employ_Income, Percentage = values) %>% 
+  arrange(-Percentage),
+          rownames=FALSE,
+          extensions = c("FixedColumns"),
+          options = list(scrollX = TRUE, 
+                         fixedColumns = list(leftColumns = 1),
+                         pageLength=10,
+                         language = list(sSearch = "Filter:")))  %>% 
+  formatRound("Percentage", 
+              mark = ".", 
+              digits = 1)
+
+})
+
+```
+
+
+
+
+
+Column {data-width=300 data-height=300}
+-----------------------------------------------------------------------
+
+
+### Top-10 Barcharts
+
+
+```{r react_bar_em_inc, include = FALSE}
+
+### Plotting bar Charts
+
+
+fun_color_extract = function(couleur){
+  
+  brewer.pal(5, couleur)[5]
+  
+}
+
+bar_farve = map(farve, fun_color_extract)
+
+
+fun_bar_em_inc = function(couleur, visits){
+
+  doct_2_sel_country %>% 
+  # st_drop_geometry() %>% 
+  rename(Country = geo) %>% 
+  filter(Country != "EU28") %>% 
+  filter(Frequency_Employ_Income == visits) %>% 
+  select(Country, Frequency_Employ_Income, values) %>%
+  arrange(Frequency_Employ_Income, -values) %>%
+  top_n(10) %>% 
+  ggplot(aes(fct_reorder(Country, values), values)) + 
+  geom_col(fill = couleur) +
+  scale_x_discrete("") +
+  scale_y_continuous("Percentage") +
+  ggtitle(visits) +
+  coord_flip() 
+
+
+}
+
+
+ggbar_em_inc = map2(bar_farve, Frequency_Employ_Income_list, fun_bar_em_inc)
+
+
+react_bar_em_inc <- reactive({
+   
+   
+    data = data.frame(Number = seq(1:12),
+            Visits_em_inc = frequency_em_inc)
+  
+  bar_selection = data %>% 
+    filter(Visits_em_inc == input$physician_em_inc) %>% 
+    select(Number) %>% 
+      pull()
+  
+  ggbar_em_inc[[bar_selection]]
+  
+
+})  
+  
+  
+```
+
+
+
+```{r barchart_em_inc}
+renderPlot({
+
+      
+     react_bar_em_inc() # ggplotly(, tooltip = c("Country", "values")) 
+  
+  
+})     
+```
+
+
+### Visit Frequency Density
+
+```{r react_em_inc_density, include = FALSE}
+
+#### Density Plots function
+
+fun_dens_em_inc = function(couleur, visits){
+
+ggplot(doct_2_sel_country %>% 
+         filter(Frequency_Employ_Income == visits), 
+                            aes(values)) +
+  geom_density(alpha = .5, 
+               fill = couleur,
+               color = NA,
+               show.legend = FALSE) + 
+  scale_x_continuous("Percentage")
+
+}
+
+### Bar = Density discrete colors
+ggdens_em_inc = map2(bar_farve, Frequency_Employ_Income_list, fun_dens_em_inc)
+
+react_dens_em_inc <- reactive({
+   
+   
+    data = data.frame(Number = seq(1:12),
+            Visits_em_inc = frequency_em_inc)
+  
+  dens_selection = data %>% 
+    filter(Visits_em_inc == input$physician_em_inc) %>% 
+    select(Number) %>% 
+      pull()
+  
+  ggdens_em_inc[[dens_selection]]
+  
+
+})  
+
+```
+
+
+```{r em_inc_density}
+
+
+renderPlotly({
+
+  
+  ggplotly(react_dens_em_inc(), tooltip = c("Country", "values")) 
+
+  
+})
+
+```
+
+
+
+
+
+
+
+
